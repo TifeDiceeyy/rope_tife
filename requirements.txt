@@ -14,3 +14,5 @@ torchaudio==2.0.2
 tqdm
 ftfy
 regex
+pyvirtualcam==0.11.1
+psutil==6.0.0

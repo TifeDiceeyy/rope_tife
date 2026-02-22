@@ -18,6 +18,7 @@ from random import random
 
 
 import rope.GUIElements as GE
+from rope.Dicts import CAMERA_BACKENDS
 import rope.Styles as style
 
 from skimage import transform as trans
@@ -262,12 +263,16 @@ class GUI(tk.Tk):
         frame.grid(row=0, column=0)
         self.widget['AudioButton'] = GE.Button(frame, 'Audio', 2, self.toggle_audio, None, 'control', x=0, y=0, width=100)
 
-        frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=100)
+        frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=110)
         frame.grid(row=0, column=1)
-        self.widget['MaskViewButton'] = GE.Button(frame, 'MaskView', 2, self.toggle_maskview, None, 'control', x=0, y=0, width=100)
+        self.widget['VirtualCameraSwitch'] = GE.Button(frame, 'VirtualCamera', 2, self.toggle_virtual_camera, None, 'control', x=0, y=0, width=110)
+
+        frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=90)
+        frame.grid(row=0, column=2)
+        self.widget['MaskViewButton'] = GE.Button(frame, 'MaskView', 2, self.toggle_maskview, None, 'control', x=0, y=0, width=90)
 
         frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=200)
-        frame.grid(row=0, column=2)
+        frame.grid(row=0, column=3)
         self.widget['PreviewModeTextSel'] = GE.TextSelection(frame, 'PreviewModeTextSel', '', 2, self.set_view, True, 'control', width=200, height=20, x=0, y=0, text_percent=1)
 
 
@@ -595,6 +600,18 @@ class GUI(tk.Tk):
         self.widget['MergeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'MergeTextSel', 'Merge Math', 3, self.select_input_faces, 'merge', '', 398, 20, 1, row, 0.62)
         row += row_delta
         self.widget['SwapperTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SwapperTypeTextSel', 'Swapper Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        row += top_border_delta
+        self.static_widget['5'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
+        row += bottom_border_delta
+
+        # Webcam
+        self.widget['WebCamBackendSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamBackendSel', 'Webcam Backend', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        row += row_delta
+        self.widget['WebCamMaxResolSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxResolSel', 'Webcam Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        row += row_delta
+        self.widget['WebCamMaxFPSSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxFPSSel', 'Webcam FPS', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        row += row_delta
+        self.widget['WebCamMaxNoSlider'] = GE.Slider2(self.layer['parameters_frame'], 'WebCamMaxNoSlider', 'Max Webcams', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
 
     ### Other
         self.layer['tooltip_frame'] = tk.Frame(self.layer['parameter_frame'], style.canvas_frame_label_3, height=80)
@@ -665,6 +682,11 @@ class GUI(tk.Tk):
         elif mode=='control':
             self.control[name] =  self.widget[name].get()
             self.add_action('control', self.control)
+
+        if name in ('WebCamMaxResolSel', 'WebCamMaxFPSSel', 'WebCamBackendSel'):
+            self.add_action('change_webcam_resolution_and_fps', None)
+        if name in ('WebCamBackendSel', 'WebCamMaxNoSlider'):
+            self.populate_cameras()
 
         if use_markers:
             self.add_action('get_requested_video_frame', self.video_slider.get())
@@ -1300,6 +1322,99 @@ class GUI(tk.Tk):
         self.widget['AutoSwapButton'].toggle_button()
 
 
+    def detect_cameras(self):
+        max_test = int(self.parameters.get('WebCamMaxNoSlider', 6))
+        backend_name = self.parameters.get('WebCamBackendSel', 'Default')
+        backend = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
+        available = []
+        for i in range(max_test):
+            cap = cv2.VideoCapture(i, backend)
+            if cap.isOpened():
+                available.append(i)
+                cap.release()
+        return available
+
+    def populate_cameras(self):
+        for btn in self.target_media_buttons:
+            btn.destroy()
+        self.target_media_buttons = []
+        self.target_media = []
+        self.target_media_canvas.delete('all')
+
+        cameras = self.detect_cameras()
+
+        if not cameras:
+            self.target_media_canvas.create_text(10, 40, anchor='w', fill='grey50',
+                font=('Arial', 10), text='No cameras found')
+            return
+
+        backend_name = self.parameters.get('WebCamBackendSel', 'Default')
+        backend = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
+        delx, dely = 100, 79
+        for i, cam_index in enumerate(cameras):
+            cap = cv2.VideoCapture(cam_index, backend)
+            thumb = None
+            if cap.isOpened():
+                success, frame = cap.read()
+                if success:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w = frame.shape[:2]
+                    new_w = 90
+                    new_h = int(new_w * h / w)
+                    thumb = cv2.resize(frame, (new_w, new_h))
+                cap.release()
+
+            btn = tk.Button(self.target_media_canvas, style.media_button_off_3, height=65, width=90)
+            self.target_media_buttons.append(btn)
+
+            if thumb is not None:
+                pil_img = Image.fromarray(thumb)
+                tk_img = ImageTk.PhotoImage(image=pil_img)
+                self.target_media.append(tk_img)
+                btn.config(image=tk_img, text=f'Camera {cam_index}', compound='top', anchor='n',
+                           command=lambda idx=cam_index, bi=i: self.select_camera(bi, idx))
+            else:
+                self.target_media.append(None)
+                btn.config(text=f'Camera {cam_index}',
+                           command=lambda idx=cam_index, bi=i: self.select_camera(bi, idx))
+
+            btn.bind("<MouseWheel>", self.target_videos_mouse_wheel)
+            self.target_media_canvas.create_window((i % 2) * delx, (i // 2) * dely,
+                                                   window=btn, anchor='nw')
+
+        self.target_media_canvas.configure(scrollregion=self.target_media_canvas.bbox("all"))
+
+    def select_camera(self, button_index, cam_index):
+        self.toggle_play_video('stop')
+        self.image_loaded = False
+        self.video_loaded = True
+        self.clear_faces()
+        self.video_slider.set(0)
+        self.add_action("load_target_video", f"Webcam {cam_index}")
+
+        for i, btn in enumerate(self.target_media_buttons):
+            if i == button_index:
+                btn.config(style.media_button_on_3)
+            else:
+                btn.config(style.media_button_off_3)
+
+    def load_webcam(self):
+        self.populate_cameras()
+
+    def toggle_virtual_camera(self):
+        self.widget['VirtualCameraSwitch'].toggle_button()
+        self.control['VirtualCameraSwitch'] = self.widget['VirtualCameraSwitch'].get()
+        self.add_action('control', self.control)
+        if self.control['VirtualCameraSwitch']:
+            self.add_action("enable_virtualcam", None)
+        else:
+            self.add_action("disable_virtualcam", None)
+
+    def set_virtual_cam_toggle_disable(self):
+        self.widget['VirtualCameraSwitch'].disable_button()
+        self.control['VirtualCameraSwitch'] = False
+        self.add_action('control', self.control)
+
     def load_target(self, button, media_file, media_type):
         # Make sure the video stops playing
         self.toggle_play_video('stop')
@@ -1500,11 +1615,9 @@ class GUI(tk.Tk):
             else:
                 self.widget['SwapFacesButton'].disable_button()
 
-        if self.widget['PreviewModeTextSel'].get()=='Video' or self.widget['PreviewModeTextSel'].get()=='Theater':
+        if self.widget['PreviewModeTextSel'].get() in ('Video', 'Theater', 'Camera Stream'):
             self.update_data('control', 'SwapFacesButton', use_markers=True)
-        elif self.widget['PreviewModeTextSel'].get()=='Image':
-            self.update_data('control', 'SwapFacesButton', use_markers=False)
-        elif self.widget['PreviewModeTextSel'].get() == 'FaceLab':
+        elif self.widget['PreviewModeTextSel'].get() in ('Image', 'FaceLab'):
             self.update_data('control', 'SwapFacesButton', use_markers=False)
 
 
@@ -1638,7 +1751,7 @@ class GUI(tk.Tk):
         # self.clear_faces()
         # self.video_loaded = False
         # self.image_loaded = False
-        if load_target_videos and self.widget['PreviewModeTextSel'].get() != 'Theater':
+        if load_target_videos and self.widget['PreviewModeTextSel'].get() not in ('Theater', 'Camera Stream'):
             self.populate_target_videos()
 
         self.layer['slider_frame'].grid_forget()
@@ -1692,6 +1805,16 @@ class GUI(tk.Tk):
             #         self.add_action("load_target_image", face["file"])
             #         break
 
+
+        elif self.widget['PreviewModeTextSel'].get() == 'Camera Stream':
+            self.image_loaded = False
+            self.video_loaded = True
+            self.layer['preview_frame'].grid(row=4, column=0, sticky='NEWS')
+            self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=1)
+            self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
+            self.layer['parameter_scroll_canvas'].grid(row=1, column=1, sticky='NEWS', pady=0)
+            self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=1, pady=0)
+            self.populate_cameras()
 
         elif self.widget['PreviewModeTextSel'].get() == 'Theater':
             self.image_loaded = False

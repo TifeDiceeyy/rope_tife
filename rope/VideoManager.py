@@ -18,6 +18,8 @@ torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 torch.set_grad_enabled(False)
 onnxruntime.set_default_logger_severity(4)
+import pyvirtualcam
+from rope.Dicts import CAMERA_BACKENDS
 
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 
@@ -70,7 +72,11 @@ class VideoManager():
 
         self.found_faces = []   # array that maps the found faces to source faces    
 
-        self.parameters = []
+        self.parameters = {
+            'WebCamBackendSel':  'Default',
+            'WebCamMaxResolSel': '1280x720',
+            'WebCamMaxFPSSel':   30,
+        }
 
 
         self.target_video = []
@@ -102,6 +108,7 @@ class VideoManager():
         self.perf_test = False
 
         self.control = []
+        self.virtcam = False
 
         
 
@@ -126,40 +133,86 @@ class VideoManager():
         self.found_faces = found_faces
 
 
+    def webcam_selected(self, file):
+        return isinstance(file, str) and file.startswith('Webcam') and len(file) == 8
+
+    def enable_virtualcam(self):
+        if not isinstance(self.capture, list):
+            vid_height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            vid_width  = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.disable_virtualcam()
+            try:
+                self.virtcam = pyvirtualcam.Camera(width=vid_width, height=vid_height, fps=self.fps)
+                print(f"Virtual camera started: {vid_width}x{vid_height} @ {self.fps}fps")
+            except Exception as e:
+                print("Virtual camera error:", e)
+
+    def disable_virtualcam(self):
+        if self.virtcam:
+            self.virtcam.close()
+        self.virtcam = False
+
+    def change_webcam_resolution_and_fps(self):
+        if self.video_file and self.webcam_selected(self.video_file):
+            if self.play:
+                self.play_video('stop')
+                time.sleep(0.5)
+            self.load_target_video(self.video_file)
+
     def load_target_video( self, file ):
         # If we already have a video loaded, release it
         if self.capture:
             self.capture.release()
-            
-        # Open file   
+
+        # Disable virtual cam when switching sources
+        if self.control and self.control.get('VirtualCameraSwitch'):
+            self.add_action("set_virtual_cam_toggle_disable", None)
+            self.disable_virtualcam()
+
+        # Open file or webcam
         self.video_file = file
-        self.capture = cv2.VideoCapture(file)
-        self.fps = self.capture.get(cv2.CAP_PROP_FPS)
-        
+        if self.webcam_selected(file):
+            webcam_index = int(file[-1])
+            backend = CAMERA_BACKENDS.get(self.parameters.get('WebCamBackendSel', 'Default'), cv2.CAP_ANY)
+            self.capture = cv2.VideoCapture(webcam_index, backend)
+            res = self.parameters.get('WebCamMaxResolSel', '1280x720')
+            res_width, res_height = res.split('x')
+            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(res_width))
+            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res_height))
+            self.fps = float(self.parameters.get('WebCamMaxFPSSel', 30))
+        else:
+            self.capture = cv2.VideoCapture(file)
+            self.fps = self.capture.get(cv2.CAP_PROP_FPS)
+
         if not self.capture.isOpened():
             print("Cannot open file: ", file)
-            
+
         else:
             self.target_video = file
             self.is_video_loaded = True
             self.is_image_loaded = False
-            self.video_frame_total = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.play = False 
+            if self.webcam_selected(file):
+                self.video_frame_total = 99999999
+            else:
+                self.video_frame_total = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.play = False
             self.current_frame = 0
             self.frame_timer = time.time()
-            self.frame_q = []            
-            self.r_frame_q = []             
+            self.frame_q = []
+            self.r_frame_q = []
             self.found_faces = []
-            self.add_action("set_slider_length",self.video_frame_total-1)
+            self.add_action("set_slider_length", self.video_frame_total-1)
 
-        self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)        
-        success, image = self.capture.read() 
-        
+        if not self.webcam_selected(file):
+            self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
+        success, image = self.capture.read()
+
         if success:
             crop = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # RGB
             temp = [crop, False]
             self.r_frame_q.append(temp)
-            self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
+            if not self.webcam_selected(file):
+                self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
     
     def load_target_image(self, file):
         if self.capture:
@@ -404,6 +457,14 @@ class VideoManager():
                     temp = [self.process_qs[index]['ProcessedFrame'], self.process_qs[index]['FrameNumber']]
                     self.frame_q.append(temp)
 
+                    # Send to virtual camera if enabled
+                    if self.control and self.control.get('VirtualCameraSwitch') and self.virtcam:
+                        try:
+                            self.virtcam.send(temp[0])
+                            self.virtcam.sleep_until_next_frame()
+                        except Exception as e:
+                            print("Virtual cam send error:", e)
+
                     # Report fps, other data
                     self.fps_average.append(1.0/time_diff)
                     if len(self.fps_average) >= floor(self.fps):
@@ -411,7 +472,7 @@ class VideoManager():
                         msg = "%s fps, %s process time" % (fps, round(self.process_qs[index]['ThreadTime'], 4))
                         self.fps_average = []
 
-                    if self.process_qs[index]['FrameNumber'] >= self.video_frame_total-1 or self.process_qs[index]['FrameNumber'] == self.stop_marker:
+                    if not self.webcam_selected(self.video_file) and (self.process_qs[index]['FrameNumber'] >= self.video_frame_total-1 or self.process_qs[index]['FrameNumber'] == self.stop_marker):
                         self.play_video('stop')
                         
                     self.process_qs[index]['Status'] = 'clear'

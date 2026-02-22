@@ -1,3 +1,11 @@
+import cv2
+
+CAMERA_BACKENDS = {
+    'Default':    cv2.CAP_ANY,
+    'DirectShow': cv2.CAP_DSHOW,
+    'MSMF':       cv2.CAP_MSMF,
+}
+
 DEFAULT_DATA = {
 # Buttons
 'AddMarkerButtonDisplay':           'icon',
@@ -9,7 +17,23 @@ DEFAULT_DATA = {
 'AudioDisplay':             'text', 
 'AudioInfoText':             'ENABLE REAL-TIME AUDIO:\nAdds audio from the input video during preview playback. If you are unable to maintain the input video frame rate, the audio will lag.',   
 'AudioState':               False,
-'AudioText':                'Enable Audio',      
+'AudioText':                'Enable Audio',
+'VirtualCameraSwitchState': False,
+'VirtualCameraSwitchInfoText': 'VIRTUAL CAMERA:\nFeed the swapped video output to a virtual camera for use in Zoom, Meet, Twitch, OBS etc.',
+'WebCamBackendSelInfoText':  'WEBCAM BACKEND:\nSelect the camera backend (Default works for most systems).',
+'WebCamBackendSelMode':      'Default',
+'WebCamBackendSelModes':     ['Default', 'DirectShow', 'MSMF'],
+'WebCamMaxResolSelInfoText': 'WEBCAM RESOLUTION:\nMaximum resolution for the webcam capture.',
+'WebCamMaxResolSelMode':     '1280x720',
+'WebCamMaxResolSelModes':    ['480x360', '640x480', '1280x720', '1920x1080', '2560x1440', '3840x2160'],
+'WebCamMaxFPSSelInfoText':   'WEBCAM FPS:\nMaximum frames per second for the webcam capture.',
+'WebCamMaxFPSSelMode':       30,
+'WebCamMaxFPSSelModes':      [15, 23, 30, 60],
+'WebCamMaxNoSliderAmount':   1,
+'WebCamMaxNoSliderInc':      1,
+'WebCamMaxNoSliderInfoText': 'WEBCAM MAX COUNT:\nMaximum number of webcams to detect.',
+'WebCamMaxNoSliderMax':      5,
+'WebCamMaxNoSliderMin':      1,      
 'AutoSwapState':            False,
 'ClearFacesDisplay':        'text', 
 'ClearFacesIcon':            './rope/media/tarfacedel.png',
@@ -325,7 +349,7 @@ DEFAULT_DATA = {
 'DetectTypeTextSelModes':           ['Retinaface', 'Yolov8', 'SCRDF'],
 'PreviewModeTextSelInfoText':       '',
 'PreviewModeTextSelMode':           'Video',
-'PreviewModeTextSelModes':          ['Video', 'Image','Theater'],
+'PreviewModeTextSelModes':          ['Video', 'Image', 'Camera Stream', 'Theater'],
 'RecordTypeTextSelInfoText':        'VIDEO RECORDING LIBRARY:\nSelect the recording library used for video recording. FFMPEG uses the Video Quality slider to adjust the size and quality of the final video. OPENCV has no options but is faster and produces good results.',
 'RecordTypeTextSelMode':            'FFMPEG',
 'RecordTypeTextSelModes':           ['FFMPEG', 'OPENCV'],
