@@ -892,11 +892,10 @@ class GUI(tk.Tk):
         return path
 
     def load_all(self):
-        if not self.json_dict["source videos"] or not self.json_dict["source faces"]:
-            print("Please set faces and videos folders first!")
+        if not self.json_dict["source faces"]:
+            print("Please set faces folder first!")
             return
 
-        self.populate_target_videos()
         self.load_input_faces()
         self.widget['StartButton'].enable_button()
 
@@ -912,7 +911,6 @@ class GUI(tk.Tk):
             json.dump(self.json_dict, outfile)
             outfile.close()
         self.widget['VideoFolderButton'].set(False, request_frame=False)
-        self.populate_target_videos()
 
     def select_save_video_path(self):
         temp = self.json_dict["saved videos"]
@@ -1177,9 +1175,6 @@ class GUI(tk.Tk):
                 if face["ButtonState"]:
                     face["TKButton"].config(style.media_button_on_3)
 
-                    if self.widget['PreviewModeTextSel'].get() == 'FaceLab':
-                        self.add_action("load_target_image", face["file"])
-                        self.image_loaded = True
 
         # Assign all active input faces to the active target face
         for tface in self.target_faces:
@@ -1217,98 +1212,6 @@ class GUI(tk.Tk):
         # face['ptrdata'] = self.models.run_swap_stg1(latent)
 
 
-
-    def populate_target_videos(self):
-        # Recursively read all media files from directory
-        directory =  self.json_dict["source videos"]
-        filenames = [os.path.join(dirpath,f) for (dirpath, dirnames, filenames) in os.walk(directory) for f in filenames]
-
-        videos = []
-        images = []
-        self.target_media = []
-        self.target_media_buttons = []
-        self.target_media_canvas.delete("all")
-
-        for file in filenames: # Does not include full path
-            # Guess File type based on extension
-            try:
-                file_type = mimetypes.guess_type(file)[0][:5]
-            except:
-                print('Unrecognized file type:', file)
-            else:
-                # Its an image
-                if file_type == 'image':
-                    try:
-                        image = cv2.imread(file)
-                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    except:
-                        print('Trouble reading file:', file)
-                    else:
-                        ratio = float(image.shape[0]) / image.shape[1]
-
-                        new_height = 50
-                        new_width = int(new_height / ratio)
-                        image = cv2.resize(image, (new_width, new_height))
-                        image[:new_height, :new_width, :] = image
-                        images.append([image, file])
-
-                # Its a video
-                elif file_type == 'video':
-                    try:
-                        video = cv2.VideoCapture(file)
-                    except:
-                        print('Trouble reading file:', file)
-                    else:
-                        if video.isOpened():
-
-                            # Grab a frame from the middle for a thumbnail
-                            video.set(cv2.CAP_PROP_POS_FRAMES, int(video.get(cv2.CAP_PROP_FRAME_COUNT)/2))
-                            success, video_frame = video.read()
-
-                            if success:
-                                video_frame = cv2.cvtColor(video_frame, cv2.COLOR_BGR2RGB)
-                                ratio = float(video_frame.shape[0]) / video_frame.shape[1]
-
-                                new_height = 50
-                                new_width = int(new_height / ratio)
-                                video_frame = cv2.resize(video_frame, (new_width, new_height))
-                                video_frame[:new_height, :new_width, :] = video_frame
-
-                                videos.append([video_frame, file])
-                                video.release()
-
-                            else:
-                                print('Trouble reading file:', file)
-                        else:
-                            print('Trouble opening file:', file)
-        delx, dely = 100, 79
-        if self.widget['PreviewModeTextSel'].get()== 'Image':#images
-            for i in range(len(images)):
-                self.target_media_buttons.append(tk.Button(self.target_media_canvas, style.media_button_off_3, height = 86, width = 86))
-
-                rgb_video = Image.fromarray(images[i][0])
-                self.target_media.append(ImageTk.PhotoImage(image=rgb_video))
-                self.target_media_buttons[i].config( image = self.target_media[i],  command=lambda i=i: self.load_target(i, images[i][1], self.widget['PreviewModeTextSel'].get()))
-                self.target_media_buttons[i].bind("<MouseWheel>", self.target_videos_mouse_wheel)
-                self.target_media_canvas.create_window((i%2)*delx, (i//2)*dely, window = self.target_media_buttons[i], anchor='nw')
-
-            self.target_media_canvas.configure(scrollregion = self.target_media_canvas.bbox("all"))
-
-        elif self.widget['PreviewModeTextSel'].get()=='Video':#videos
-
-            for i in range(len(videos)):
-                self.target_media_buttons.append(tk.Button(self.target_media_canvas, style.media_button_off_3, height = 65, width = 90))
-                self.target_media.append(ImageTk.PhotoImage(image=Image.fromarray(videos[i][0])))
-
-                filename = os.path.basename(videos[i][1])
-                if len(filename)>14:
-                    filename = filename[:11]+'...'
-
-                self.target_media_buttons[i].bind("<MouseWheel>", self.target_videos_mouse_wheel)
-                self.target_media_buttons[i].config(image = self.target_media[i], text=filename, compound='top', anchor='n',command=lambda i=i: self.load_target(i, videos[i][1], self.widget['PreviewModeTextSel'].get()))
-                self.target_media_canvas.create_window((i%2)*delx, (i//2)*dely, window = self.target_media_buttons[i], anchor='nw')
-
-            self.static_widget['input_videos_scrollbar'].resize_scrollbar(None)
 
     def auto_swap(self):
             # Reselect Target Image
@@ -1425,45 +1328,6 @@ class GUI(tk.Tk):
         self.widget['VirtualCameraSwitch'].disable_button()
         self.control['VirtualCameraSwitch'] = False
         self.add_action('control', self.control)
-
-    def load_target(self, button, media_file, media_type):
-        # Make sure the video stops playing
-        self.toggle_play_video('stop')
-        self.image_loaded = False
-        self.video_loaded = False
-        self.clear_faces()
-
-        if media_type == 'Video':
-            self.video_slider.set(0)
-            self.add_action("load_target_video", media_file)
-            self.media_file_name = os.path.splitext(os.path.basename(media_file))
-            self.video_loaded = True
-
-
-        elif media_type == 'Image':
-            self.add_action("load_target_image", media_file)
-            self.media_file_name = os.path.splitext(os.path.basename(media_file))
-            self.image_loaded = True
-
-            # # find faces
-            if self.widget['AutoSwapButton'].get():
-                self.add_action('function', "gui.auto_swap()")
-
-
-
-
-        for i in range(len(self.target_media_buttons)):
-            self.target_media_buttons[i].config(style.media_button_off_3)
-
-        self.target_media_buttons[button].config(style.media_button_on_3)
-
-        # delete all markers
-        self.layer['markers_canvas'].delete('all')
-        self.markers = []
-        self.stop_marker = []
-        self.add_action("markers", self.markers)
-
-
 
     # @profile
     def set_image(self, image, requested):
@@ -1763,13 +1627,7 @@ class GUI(tk.Tk):
                     self.select_input_faces('none', i-1)
                     break
 
-    def set_view(self, load_target_videos,b):
-        # self.clear_faces()
-        # self.video_loaded = False
-        # self.image_loaded = False
-        if load_target_videos and self.widget['PreviewModeTextSel'].get() not in ('Theater', 'Camera Stream'):
-            self.populate_target_videos()
-
+    def set_view(self, load_target_videos, b):
         self.layer['slider_frame'].grid_forget()
         self.layer['preview_frame'].grid_forget()
         self.layer['markers_canvas'].grid_forget()
@@ -1784,59 +1642,14 @@ class GUI(tk.Tk):
         self.layer['facelab_canvas'].grid_forget()
         self.layer['facelab_scroll_canvas'].grid_forget()
 
-        if self.widget['PreviewModeTextSel'].get()=='Video':
-            self.image_loaded = False
-            self.layer['slider_frame'].grid(row=2, column=0, sticky='NEWS', pady=0)
-            self.layer['preview_frame'].grid(row=4, column=0, sticky='NEWS')
-            self.layer['markers_canvas'].grid(row=3, column=0, sticky='NEWS')
-            self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=1)
-
-            self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
-            self.layer['parameter_scroll_canvas'].grid(row=1, column=1, sticky='NEWS', pady=0)
-            self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=1, pady=0)
-
-
-        elif self.widget['PreviewModeTextSel'].get()=='Image':
-            self.video_loaded = False
-            self.layer['image_controls'].grid(row=2, column=0, rowspan=2, sticky='NEWS', pady=0)
-
-            self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
-            self.layer['parameter_scroll_canvas'].grid(row=1, column=1, sticky='NEWS', pady=0)
-            self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=1, pady=0)
-            self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=1)
-
-
-        elif self.widget['PreviewModeTextSel'].get() == 'FaceLab':
-            self.video_loaded = False
-            self.layer['FaceLab_controls'].grid(row=2, column=0, rowspan=2, sticky='NEWS', pady=0)
-            self.layer['facelab_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
-            self.layer['facelab_scroll_canvas'].grid(row=1, column=1, sticky='NEWS', pady=0)
-            self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=1, pady=0)
-            self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=1)
-
-            # # find the input image with the lowest value
-            # for face in self.source_faces:
-            #     if face["ButtonState"]:
-            #         self.image_loaded = True
-            #         self.add_action("load_target_image", face["file"])
-            #         break
-
-
-        elif self.widget['PreviewModeTextSel'].get() == 'Camera Stream':
-            self.image_loaded = False
-            self.video_loaded = True
-            self.layer['preview_frame'].grid(row=4, column=0, sticky='NEWS')
-            self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=1)
-            self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
-            self.layer['parameter_scroll_canvas'].grid(row=1, column=1, sticky='NEWS', pady=0)
-            self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=1, pady=0)
-            self.populate_cameras()
-
-        elif self.widget['PreviewModeTextSel'].get() == 'Theater':
-            self.image_loaded = False
-            self.layer['slider_frame'].grid(row=2, column=0, sticky='NEWS', pady=0)
-            self.layer['preview_frame'].grid(row=4, column=0, sticky='NEWS')
-            self.layer['markers_canvas'].grid(row=3, column=0, sticky='NEWS')
+        self.image_loaded = False
+        self.video_loaded = True
+        self.layer['preview_frame'].grid(row=4, column=0, sticky='NEWS')
+        self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=1)
+        self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
+        self.layer['parameter_scroll_canvas'].grid(row=1, column=1, sticky='NEWS', pady=0)
+        self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=1, pady=0)
+        self.populate_cameras()
 
 
 
