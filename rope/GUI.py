@@ -41,6 +41,7 @@ class GUI(tk.Tk):
         self.image_loaded = False
         self._vid_w = 1
         self._vid_h = 1
+        self._detecting_cameras = False
         self.image_file_name = []
         self.stop_marker = []
         self.stop_image = []
@@ -257,7 +258,7 @@ class GUI(tk.Tk):
         preview_data.grid_columnconfigure(0, weight=1)
         preview_data.grid_columnconfigure(1, weight=1)
         preview_data.grid_columnconfigure(2, weight=1)
-        # preview_data.grid_columnconfigure(3, weight=1)
+        preview_data.grid_columnconfigure(3, weight=1)
         preview_data.grid_rowconfigure(0, weight=0)
 
 
@@ -1326,6 +1327,10 @@ class GUI(tk.Tk):
 
 
     def populate_cameras(self):
+        if self._detecting_cameras:
+            return
+        self._detecting_cameras = True
+
         # Clear panel and show status immediately — no blocking
         for btn in self.target_media_buttons:
             btn.destroy()
@@ -1362,6 +1367,7 @@ class GUI(tk.Tk):
 
         # Schedule UI build on main thread
         self.after(0, lambda: self._build_camera_buttons(camera_data))
+        self._detecting_cameras = False
 
     def _build_camera_buttons(self, camera_data):
         self.target_media_canvas.delete('all')
