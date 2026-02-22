@@ -204,15 +204,14 @@ class VideoManager():
             self.found_faces = []
             self.add_action("set_slider_length", self.video_frame_total-1)
 
+        # For webcam, skip the initial blocking read — first frame arrives via play loop
         if not self.webcam_selected(file):
             self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
-        success, image = self.capture.read()
-
-        if success:
-            crop = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # RGB
-            temp = [crop, False]
-            self.r_frame_q.append(temp)
-            if not self.webcam_selected(file):
+            success, image = self.capture.read()
+            if success:
+                crop = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # RGB
+                temp = [crop, False]
+                self.r_frame_q.append(temp)
                 self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
     
     def load_target_image(self, file):
@@ -318,8 +317,10 @@ class VideoManager():
             self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
             self.frame_timer = time.time()
             
-            # Create reusable queue based on number of threads
-            for i in range(self.parameters['ThreadsSlider']):
+            # Webcam uses 1 slot to avoid frame buffering lag; video uses configured thread count
+            is_webcam = self.video_file and self.webcam_selected(self.video_file)
+            num_threads = 1 if is_webcam else self.parameters['ThreadsSlider']
+            for i in range(num_threads):
                     new_process_q = self.process_q.copy()
                     self.process_qs.append(new_process_q)
                     

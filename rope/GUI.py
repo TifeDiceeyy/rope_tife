@@ -1305,6 +1305,8 @@ class GUI(tk.Tk):
         self.clear_faces()
         self.video_slider.set(0)
         self.add_action("load_target_video", f"Webcam {cam_index}")
+        # Auto-start preview immediately — no need to press Play
+        self.toggle_play_video('play')
 
         for i, btn in enumerate(self.target_media_buttons):
             if i == button_index:
