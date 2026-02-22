@@ -24,6 +24,7 @@ from rope.Dicts import CAMERA_BACKENDS
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 
 device = 'cuda'
+torch.backends.cudnn.benchmark = True
 
 lock=threading.Lock()
 
@@ -447,14 +448,22 @@ class VideoManager():
 
         # Always be emptying the queues
         time_diff = time.time() - self.frame_timer
+        is_webcam = self.video_file and self.webcam_selected(self.video_file)
 
-        if not self.record and time_diff >= 1.0/float(self.fps) and self.play:
+        # Webcam: output frames as fast as GPU produces them, no timer gate
+        # Video: maintain correct playback speed via frame timer
+        ready = not self.record and self.play and (is_webcam or time_diff >= 1.0/float(self.fps))
 
+        if ready:
             index, min_frame = self.find_lowest_frame(self.process_qs)
 
             if index != -1:
                 if self.process_qs[index]['Status'] == 'finished':
                     temp = [self.process_qs[index]['ProcessedFrame'], self.process_qs[index]['FrameNumber']]
+
+                    # Webcam: drop stale queued frames to keep display latency low
+                    if is_webcam:
+                        self.frame_q = []
                     self.frame_q.append(temp)
 
                     # Send to virtual camera if enabled
@@ -465,21 +474,22 @@ class VideoManager():
                         except Exception as e:
                             print("Virtual cam send error:", e)
 
-                    # Report fps, other data
-                    self.fps_average.append(1.0/time_diff)
+                    # Report fps
+                    self.fps_average.append(1.0/time_diff if time_diff > 0 else self.fps)
                     if len(self.fps_average) >= floor(self.fps):
                         fps = round(np.average(self.fps_average), 2)
                         msg = "%s fps, %s process time" % (fps, round(self.process_qs[index]['ThreadTime'], 4))
                         self.fps_average = []
 
-                    if not self.webcam_selected(self.video_file) and (self.process_qs[index]['FrameNumber'] >= self.video_frame_total-1 or self.process_qs[index]['FrameNumber'] == self.stop_marker):
+                    if not is_webcam and (self.process_qs[index]['FrameNumber'] >= self.video_frame_total-1 or self.process_qs[index]['FrameNumber'] == self.stop_marker):
                         self.play_video('stop')
-                        
+
                     self.process_qs[index]['Status'] = 'clear'
                     self.process_qs[index]['Thread'] = []
                     self.process_qs[index]['FrameNumber'] = []
                     self.process_qs[index]['ThreadTime'] = []
-                    self.frame_timer += 1.0/self.fps
+                    if not is_webcam:
+                        self.frame_timer += 1.0/self.fps
                     
         elif self.record:
            

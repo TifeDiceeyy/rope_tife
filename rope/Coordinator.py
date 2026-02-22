@@ -171,6 +171,10 @@ def load_clip_model():
 def run():
     global gui, vm, action, frame, r_frame, resize_delay, mem_delay
 
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA GPU not detected. This app requires an NVIDIA GPU with CUDA.")
+    torch.backends.cudnn.benchmark = True
+
     models = Models.Models()
     gui = GUI.GUI(models)
     vm = VM.VideoManager(models)
