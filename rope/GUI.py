@@ -17,6 +17,7 @@ import webbrowser
 from random import random
 
 
+import threading
 import rope.GUIElements as GE
 from rope.Dicts import CAMERA_BACKENDS
 import rope.Styles as style
@@ -38,6 +39,8 @@ class GUI(tk.Tk):
         self.video_image = []
         self.video_loaded = False
         self.image_loaded = False
+        self._vid_w = 1
+        self._vid_h = 1
         self.image_file_name = []
         self.stop_marker = []
         self.stop_image = []
@@ -1322,54 +1325,57 @@ class GUI(tk.Tk):
         self.widget['AutoSwapButton'].toggle_button()
 
 
-    def detect_cameras(self):
-        max_test = int(self.parameters.get('WebCamMaxNoSlider', 6))
-        backend_name = self.parameters.get('WebCamBackendSel', 'Default')
-        backend = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
-        available = []
-        for i in range(max_test):
-            cap = cv2.VideoCapture(i, backend)
-            if cap.isOpened():
-                available.append(i)
-                cap.release()
-        return available
-
     def populate_cameras(self):
+        # Clear panel and show status immediately — no blocking
         for btn in self.target_media_buttons:
             btn.destroy()
         self.target_media_buttons = []
         self.target_media = []
         self.target_media_canvas.delete('all')
+        self.target_media_canvas.create_text(10, 40, anchor='w', fill='grey50',
+            font=('Arial', 10), text='Detecting cameras...')
 
-        cameras = self.detect_cameras()
+        backend_name = self.parameters.get('WebCamBackendSel', 'Default')
+        backend = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
+        max_test = int(self.parameters.get('WebCamMaxNoSlider', 3))
 
-        if not cameras:
+        threading.Thread(target=self._detect_and_load_cameras,
+                         args=(backend, max_test), daemon=True).start()
+
+    def _detect_and_load_cameras(self, backend, max_test):
+        camera_data = []
+        for i in range(max_test):
+            cap = cv2.VideoCapture(i, backend)
+            if not cap.isOpened():
+                cap.release()
+                continue
+            thumb = None
+            success, frame = cap.read()
+            if success:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w = frame.shape[:2]
+                new_w = 90
+                new_h = int(new_w * h / w)
+                thumb = cv2.resize(frame, (new_w, new_h))
+            cap.release()
+            camera_data.append((i, thumb))
+
+        # Schedule UI build on main thread
+        self.after(0, lambda: self._build_camera_buttons(camera_data))
+
+    def _build_camera_buttons(self, camera_data):
+        self.target_media_canvas.delete('all')
+        if not camera_data:
             self.target_media_canvas.create_text(10, 40, anchor='w', fill='grey50',
                 font=('Arial', 10), text='No cameras found')
             return
 
-        backend_name = self.parameters.get('WebCamBackendSel', 'Default')
-        backend = CAMERA_BACKENDS.get(backend_name, cv2.CAP_ANY)
         delx, dely = 100, 79
-        for i, cam_index in enumerate(cameras):
-            cap = cv2.VideoCapture(cam_index, backend)
-            thumb = None
-            if cap.isOpened():
-                success, frame = cap.read()
-                if success:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    h, w = frame.shape[:2]
-                    new_w = 90
-                    new_h = int(new_w * h / w)
-                    thumb = cv2.resize(frame, (new_w, new_h))
-                cap.release()
-
+        for i, (cam_index, thumb) in enumerate(camera_data):
             btn = tk.Button(self.target_media_canvas, style.media_button_off_3, height=65, width=90)
             self.target_media_buttons.append(btn)
-
             if thumb is not None:
-                pil_img = Image.fromarray(thumb)
-                tk_img = ImageTk.PhotoImage(image=pil_img)
+                tk_img = ImageTk.PhotoImage(image=Image.fromarray(thumb))
                 self.target_media.append(tk_img)
                 btn.config(image=tk_img, text=f'Camera {cam_index}', compound='top', anchor='n',
                            command=lambda idx=cam_index, bi=i: self.select_camera(bi, idx))
@@ -1377,7 +1383,6 @@ class GUI(tk.Tk):
                 self.target_media.append(None)
                 btn.config(text=f'Camera {cam_index}',
                            command=lambda idx=cam_index, bi=i: self.select_camera(bi, idx))
-
             btn.bind("<MouseWheel>", self.target_videos_mouse_wheel)
             self.target_media_canvas.create_window((i % 2) * delx, (i // 2) * dely,
                                                    window=btn, anchor='nw')
@@ -1459,7 +1464,7 @@ class GUI(tk.Tk):
         self.video_image = image[0]
         frame = image[1]
 
-        if not requested:
+        if not requested and self.widget['PreviewModeTextSel'].get() != 'Camera Stream':
             self.video_slider.set(frame)
             self.parameter_update_from_marker(frame)
 
@@ -1471,8 +1476,13 @@ class GUI(tk.Tk):
 
         if len(image) != 0:
 
-            x1 = float(self.video.winfo_width())
-            y1 = float(self.video.winfo_height())
+            w = self.video.winfo_width()
+            h = self.video.winfo_height()
+            if w > 1:
+                self._vid_w = w
+                self._vid_h = h
+            x1 = float(self._vid_w)
+            y1 = float(self._vid_h)
 
 
             x2 = float(image.shape[1])
