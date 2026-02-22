@@ -692,10 +692,13 @@ class GUI(tk.Tk):
         if name in ('WebCamBackendSel', 'WebCamMaxNoSlider'):
             self.populate_cameras()
 
-        if use_markers:
-            self.add_action('get_requested_video_frame', self.video_slider.get())
-        else:
-            self.add_action('get_requested_video_frame_without_markers', self.video_slider.get())
+        # Webcam settings don't need a frame seek — the play loop handles live frames
+        webcam_params = ('WebCamMaxResolSel', 'WebCamMaxFPSSel', 'WebCamBackendSel', 'WebCamMaxNoSlider')
+        if name not in webcam_params:
+            if use_markers:
+                self.add_action('get_requested_video_frame', self.video_slider.get())
+            else:
+                self.add_action('get_requested_video_frame_without_markers', self.video_slider.get())
 
     def callback(self, url):
         webbrowser.open_new_tab(url)
