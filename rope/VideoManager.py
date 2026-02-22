@@ -155,10 +155,12 @@ class VideoManager():
 
     def change_webcam_resolution_and_fps(self):
         if self.video_file and self.webcam_selected(self.video_file):
+            was_playing = self.play
             if self.play:
                 self.play_video('stop')
-                time.sleep(0.5)
             self.load_target_video(self.video_file)
+            if was_playing:
+                self.play_video('play')
 
     def load_target_video( self, file ):
         # If we already have a video loaded, release it
@@ -181,6 +183,7 @@ class VideoManager():
             self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(res_width))
             self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res_height))
             self.fps = float(self.parameters.get('WebCamMaxFPSSel', 30))
+            self.capture.set(cv2.CAP_PROP_FPS, self.fps)
         else:
             self.capture = cv2.VideoCapture(file)
             self.fps = self.capture.get(cv2.CAP_PROP_FPS)
@@ -451,9 +454,8 @@ class VideoManager():
         time_diff = time.time() - self.frame_timer
         is_webcam = self.video_file and self.webcam_selected(self.video_file)
 
-        # Webcam: output frames as fast as GPU produces them, no timer gate
-        # Video: maintain correct playback speed via frame timer
-        ready = not self.record and self.play and (is_webcam or time_diff >= 1.0/float(self.fps))
+        # Use timer gate for both webcam and video to ensure smooth, evenly-spaced display
+        ready = not self.record and self.play and time_diff >= 1.0/float(self.fps)
 
         if ready:
             index, min_frame = self.find_lowest_frame(self.process_qs)
@@ -489,8 +491,7 @@ class VideoManager():
                     self.process_qs[index]['Thread'] = []
                     self.process_qs[index]['FrameNumber'] = []
                     self.process_qs[index]['ThreadTime'] = []
-                    if not is_webcam:
-                        self.frame_timer += 1.0/self.fps
+                    self.frame_timer += 1.0/self.fps
                     
         elif self.record:
            
