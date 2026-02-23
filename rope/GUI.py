@@ -233,6 +233,49 @@ class GUI(tk.Tk):
         GE.Separator_y(self.layer['InputVideoFrame'], 229, 0)
         GE.Separator_x(self.layer['InputVideoFrame'], 0, 41)
 
+        # --- Webcam Resolution / FPS / Backend bar ---
+        self.layer['InputVideoFrame'].grid_rowconfigure(2, weight=0)
+        wcam_bar = tk.Frame(self.layer['InputVideoFrame'], style.canvas_frame_label_2, height=28)
+        wcam_bar.grid(row=2, column=0, columnspan=4, sticky='EW', padx=4, pady=2)
+        wcam_bar.grid_propagate(False)
+
+        _wbg  = style.canvas_frame_label_2['bg']
+        _wfg  = '#D0D0D0'
+        _wfnt = ('Segoe UI', 9)
+
+        tk.Label(wcam_bar, text='Webcam  Res:', bg=_wbg, fg=_wfg, font=_wfnt).pack(side='left', padx=(8, 2))
+
+        self._wcam_res_var = tk.StringVar(value='1280x720')
+        _res_menu = tk.OptionMenu(wcam_bar, self._wcam_res_var,
+                                  *['480x360', '640x480', '1280x720', '1920x1080', '2560x1440', '3840x2160'],
+                                  command=self._on_wcam_res_change)
+        _res_menu.config(bg=_wbg, fg=_wfg, activebackground='#3c3c46', activeforeground=_wfg,
+                         highlightthickness=0, relief='flat', font=_wfnt, bd=0, indicatoron=True)
+        _res_menu['menu'].config(bg='#28282e', fg=_wfg, activebackground='#3c3c46', activeforeground=_wfg, font=_wfnt)
+        _res_menu.pack(side='left', padx=(0, 6))
+
+        tk.Label(wcam_bar, text='FPS:', bg=_wbg, fg=_wfg, font=_wfnt).pack(side='left', padx=(0, 2))
+
+        self._wcam_fps_var = tk.StringVar(value='30')
+        _fps_menu = tk.OptionMenu(wcam_bar, self._wcam_fps_var,
+                                  *['15', '23', '30', '60'],
+                                  command=self._on_wcam_fps_change)
+        _fps_menu.config(bg=_wbg, fg=_wfg, activebackground='#3c3c46', activeforeground=_wfg,
+                         highlightthickness=0, relief='flat', font=_wfnt, bd=0, indicatoron=True)
+        _fps_menu['menu'].config(bg='#28282e', fg=_wfg, activebackground='#3c3c46', activeforeground=_wfg, font=_wfnt)
+        _fps_menu.pack(side='left', padx=(0, 6))
+
+        tk.Label(wcam_bar, text='Backend:', bg=_wbg, fg=_wfg, font=_wfnt).pack(side='left', padx=(0, 2))
+
+        self._wcam_backend_var = tk.StringVar(value='Default')
+        _backend_menu = tk.OptionMenu(wcam_bar, self._wcam_backend_var,
+                                      *['Default', 'DirectShow', 'MSMF'],
+                                      command=self._on_wcam_backend_change)
+        _backend_menu.config(bg=_wbg, fg=_wfg, activebackground='#3c3c46', activeforeground=_wfg,
+                             highlightthickness=0, relief='flat', font=_wfnt, bd=0, indicatoron=True)
+        _backend_menu['menu'].config(bg='#28282e', fg=_wfg, activebackground='#3c3c46', activeforeground=_wfg, font=_wfnt)
+        _backend_menu.pack(side='left', padx=(0, 6))
+
     ### Preview
         self.layer['preview_column'] = tk.Frame(middle_frame, style.canvas_bg)
         self.layer['preview_column'].grid(row=0, column=1, sticky='NEWS', pady=0)
@@ -875,6 +918,11 @@ class GUI(tk.Tk):
             for key, value in self.parameters.items():
                 self.widget[key].set(value, request_frame=False)
 
+            # Sync webcam bar dropdowns with loaded parameters
+            self._wcam_res_var.set(str(self.parameters.get('WebCamMaxResolSel', '1280x720')))
+            self._wcam_fps_var.set(str(self.parameters.get('WebCamMaxFPSSel', 30)))
+            self._wcam_backend_var.set(str(self.parameters.get('WebCamBackendSel', 'Default')))
+
         self.add_action('parameters', self.parameters)
         self.add_action('control', self.control)
 
@@ -1319,6 +1367,29 @@ class GUI(tk.Tk):
 
     def load_webcam(self):
         self.populate_cameras()
+
+    def _on_wcam_res_change(self, value):
+        """Called when the webcam resolution OptionMenu changes."""
+        self.parameters['WebCamMaxResolSel'] = value
+        self.widget['WebCamMaxResolSel'].set(value, request_frame=False)
+        self.add_action('parameters', self.parameters)
+        self.add_action('change_webcam_resolution_and_fps', None)
+
+    def _on_wcam_fps_change(self, value):
+        """Called when the webcam FPS OptionMenu changes."""
+        fps = int(value)
+        self.parameters['WebCamMaxFPSSel'] = fps
+        self.widget['WebCamMaxFPSSel'].set(fps, request_frame=False)
+        self.add_action('parameters', self.parameters)
+        self.add_action('change_webcam_resolution_and_fps', None)
+
+    def _on_wcam_backend_change(self, value):
+        """Called when the webcam backend OptionMenu changes."""
+        self.parameters['WebCamBackendSel'] = value
+        self.widget['WebCamBackendSel'].set(value, request_frame=False)
+        self.add_action('parameters', self.parameters)
+        self.add_action('change_webcam_resolution_and_fps', None)
+        self.populate_cameras()  # Re-scan with new backend
 
     def toggle_virtual_camera(self):
         self.widget['VirtualCameraSwitch'].toggle_button()
